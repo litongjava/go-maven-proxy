@@ -19,7 +19,7 @@ const defaultPort = 10010
 // 代理处理函数
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
   // 构建目标 URL
-  targetURL := "https://repo.maven.apache.org" + r.RequestURI
+  targetURL := "https://repo.maven.apache.org/maven2" + r.RequestURI
 
   // 构建缓存文件路径
   cacheFilePath := getCacheFilePath(r.RequestURI)
@@ -36,18 +36,27 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
   log.Printf("Fetching from remote: %s", targetURL)
   req, err := http.NewRequest(r.Method, targetURL, r.Body)
   if err != nil {
-    http.Error(w, "Error creating request", http.StatusInternalServerError)
+    http.Error(w, "Error creating request:"+targetURL+",err:"+err.Error(), http.StatusInternalServerError)
     return
   }
 
   // 复制请求头
   req.Header = r.Header
+  // 移除可能导致问题的请求头
+  req.Header.Del("Host")
+  req.Header.Del("Connection")
+  req.Header.Del("Upgrade")
+  req.Header.Del("Keep-Alive")
+  req.Header.Del("Proxy-Connection")
 
-  // 使用默认的 HTTP 客户端执行请求
-  client := &http.Client{}
+  // 强制使用 HTTP/1.1
+  transport := &http.Transport{
+    ForceAttemptHTTP2: false,
+  }
+  client := &http.Client{Transport: transport}
   resp, err := client.Do(req)
   if err != nil {
-    http.Error(w, "Error forwarding request", http.StatusBadGateway)
+    http.Error(w, "Error forwarding request:"+targetURL+",err:"+err.Error(), http.StatusInternalServerError)
     return
   }
   defer resp.Body.Close()
